@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">SmartLens</string>
+    <string name="camera_error">This device doesn\'t support Camera2 API.</string>
+
+    <string name="dummy_button">Dummy Button</string>
+    <string name="dummy_content">DUMMY\nCONTENT</string>
+</resources>
