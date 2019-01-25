@@ -1,4 +1,4 @@
-package hssoft.tf.smartlens.tf_mobile;
+package hssoft.tf.smartlens.tf_detector;
 
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
@@ -6,7 +6,7 @@ import android.media.Image;
 
 import java.nio.ByteBuffer;
 
-public class TFMobileImageHelper {
+public class TFImageHelper {
     private static final int IMAGE_MEAN = 0;
     private static final float IMAGE_STD = 255;
     static final int kMaxChannelValue = 262143;

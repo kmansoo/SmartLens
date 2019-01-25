@@ -1,4 +1,4 @@
-package hssoft.tf.smartlens;
+package hssoft.tf.smartlens.tf_detector;
 
 import android.graphics.RectF;
 

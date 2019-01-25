@@ -26,12 +26,12 @@ import android.widget.ListView;
 import android.widget.Toast;
 
 import java.util.List;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 
-import hssoft.tf.smartlens.tf_lite.TFLiteImageClassifier;
-import hssoft.tf.smartlens.tf_mobile.TFMobileImageClassifier;
-import hssoft.tf.smartlens.tf_mobile.TFMobileImageHelper;
+import hssoft.tf.smartlens.tf_detector.TFDetector;
+import hssoft.tf.smartlens.tf_detector.TFImageHelper;
+import hssoft.tf.smartlens.tf_detector.TFRecognition;
+import hssoft.tf.smartlens.tf_lite.TFLiteDetector;
+import hssoft.tf.smartlens.tf_mobile.TFMobileDetector;
 import hssoft.tf.smartlens.views.CameraPreviewFragment;
 
 /**
@@ -39,8 +39,8 @@ import hssoft.tf.smartlens.views.CameraPreviewFragment;
  * status bar and navigation/system bar) with user interaction.
  */
 public class SmartLensActivity
-        extends AppCompatActivity
-        implements CameraPreviewFragment.CameraPreviewListener {
+    extends AppCompatActivity
+    implements CameraPreviewFragment.CameraPreviewListener {
 
     private static final String TAG = "FullscreenActivity";
 
@@ -49,51 +49,45 @@ public class SmartLensActivity
 
     private static final boolean DEBUG_MODE = false;
 
-    private ListView resultListView;
-    private ImageView previewImageView;
-    private Button btnTFMethod;
+    private ListView resultListView_;
+    private ImageView previewImageView_;
+    private Button btnTFMethod_;
 
 
-    private boolean computing;
-    private Bitmap bitmap;
-    private Bitmap croppedBitmap;
-    private int sensorOrientation;
-    private Matrix frameToCropTransform;
-    private Matrix cropToFrameTransform;
+    private boolean computing_;
+    private Bitmap bitmap_;
+    private Bitmap croppedBitmap_;
+    private int sensorOrientation_;
+    private Matrix frameToCropTransform_;
+    private Matrix cropToFrameTransform_;
 
-    // ++
     private static final int TF_METHOD_TFLITE = 0;
     private static final int TF_METHOD_TFMOBILE = 1;
 
-    private int tfMethod = TF_METHOD_TFMOBILE;
+    private int tfMethod_ = TF_METHOD_TFMOBILE;
 
-    //  TF Mobile
-    private TFMobileImageClassifier tfMobileImageClassifier;
-    private ArrayAdapter<TFRecognition> resultListAdapter;
-    private List<TFRecognition> tfMobileResultList;
+    private ArrayAdapter<TFRecognition> resultListAdapter_;
+    private List<TFRecognition> tfMobileResultList_;
 
-    //  TF Lite
-    private Executor executor = Executors.newSingleThreadExecutor();
-    private TFLiteImageClassifier tfLiteImageClassifier;
+    private TFDetector activiteDetector_;
 
-    private static final String TFLITE_MODEL_PATH = "mobilenet_v1_1.0_224_quant.tflite";
-    private static final String TFLITE_LABEL_PATH = "labels.txt";
-    private static final int TFLITE_INPUT_SIZE = 224;
+    //  TF Mobile and Lite
+    private TFDetector tfMobileDetector_  = null;
+    private TFDetector tfLiteDetector_ = null;
+
 
     private Runnable updateResult = new Runnable() {
         @Override
         public void run() {
-            resultListAdapter.clear();
+            resultListAdapter_.clear();
 
-            if (tfMobileResultList != null) {
-                resultListAdapter.addAll(tfMobileResultList);
-            }
+            if (tfMobileResultList_ != null)
+                resultListAdapter_.addAll(tfMobileResultList_);
 
-            if (DEBUG_MODE) {
-                previewImageView.setImageDrawable(new BitmapDrawable(getResources(), croppedBitmap));
-            }
+            if (DEBUG_MODE)
+                previewImageView_.setImageDrawable(new BitmapDrawable(getResources(), croppedBitmap_));
 
-            computing = false;
+            computing_ = false;
         }
     };
 
@@ -106,6 +100,14 @@ public class SmartLensActivity
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        btnTFMethod_ = findViewById(R.id.tf_method);
+        btnTFMethod_.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                changeTFMethod();
+            }
+        });
+
         if (hasPermission()) {
             if (null == savedInstanceState) {
                 init();
@@ -113,105 +115,80 @@ public class SmartLensActivity
         } else {
             requestPermission();
         }
-
-        btnTFMethod = findViewById(R.id.tf_method);
-        changeTFMethod();
-
-        btnTFMethod.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                changeTFMethod();
-            }
-        });
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
 
-        if (tfLiteImageClassifier != null) {
-            executor.execute(new Runnable() {
-                @Override
-                public void run() {
-                    tfLiteImageClassifier.close();
-                }
-            });
-            tfLiteImageClassifier = null;
-        }
+        tfLiteDetector_ = null;
+        tfMobileDetector_ = null;
     }
 
-
     private void init() {
-        resultListView = (ListView) findViewById(R.id.resultList);
-        previewImageView = (ImageView) findViewById(R.id.previewImage);
+        resultListView_ = (ListView) findViewById(R.id.resultList);
+        previewImageView_ = (ImageView) findViewById(R.id.previewImage);
 
-        resultListAdapter = new ArrayAdapter<>(this, R.layout.item_recogition);
-        resultListView.setAdapter(this.resultListAdapter);
+        resultListAdapter_ = new ArrayAdapter<>(this, R.layout.item_recogition);
+        resultListView_.setAdapter(this.resultListAdapter_);
 
         getFragmentManager().beginTransaction()
-                .replace(R.id.container, CameraPreviewFragment.newInstance(this))
-                .commit();
+            .replace(R.id.container, CameraPreviewFragment.newInstance(this))
+            .commit();
 
 
         initTFLite();
         initTFMobile();
 
+        changeTFMethod();
 
         if (DEBUG_MODE) {
-            previewImageView.setVisibility(View.VISIBLE);
+            previewImageView_.setVisibility(View.VISIBLE);
         } else {
-            previewImageView.setVisibility(View.GONE);
-        }
-
-    }
-
-    private void changeTFMethod() {
-        if (tfMethod == TF_METHOD_TFLITE) {
-            tfMethod = TF_METHOD_TFMOBILE;
-
-            btnTFMethod.setText("TF Mobile");
-            btnTFMethod.setBackgroundColor(Color.BLUE);
-        }
-        else {
-            tfMethod = TF_METHOD_TFLITE;
-
-            btnTFMethod.setText("TF Lite");
-            btnTFMethod.setBackgroundColor(Color.RED);
+            previewImageView_.setVisibility(View.GONE);
         }
 
     }
 
     private void initTFMobile() {
-        tfMobileImageClassifier = new TFMobileImageClassifier(this);
+        this.tfMobileDetector_ = new TFMobileDetector();
+
+        try {
+            this.tfMobileDetector_.loadModel(this);
+        }
+        catch (Exception e) {
+
+        }
     }
 
     private void initTFLite() {
+        this.tfLiteDetector_ = new TFLiteDetector();
+
         try {
-            tfLiteImageClassifier = TFLiteImageClassifier.create(
-                    this,
-                    TFLITE_MODEL_PATH,
-                    TFLITE_LABEL_PATH,
-                    TFLITE_INPUT_SIZE);
-        } catch (final Exception e) {
+            this.tfLiteDetector_.loadModel(this);
+        }
+        catch (Exception e) {
             throw new RuntimeException("Error initializing TensorFlow!", e);
         }
+    }
 
-        /*
-            executor.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        tfLiteImageClassifier = TFLiteImageClassifier.create(
-                                getAssets(),
-                                TFLITE_MODEL_PATH,
-                                TFLITE_LABEL_PATH,
-                                TFLITE_INPUT_SIZE);
-                    } catch (final Exception e) {
-                        throw new RuntimeException("Error initializing TensorFlow!", e);
-                    }
-                }
-            });
-        */
+    private void changeTFMethod() {
+        if (tfMethod_ == TF_METHOD_TFLITE) {
+            tfMethod_ = TF_METHOD_TFMOBILE;
+
+            btnTFMethod_.setText("TF Mobile");
+            btnTFMethod_.setBackgroundColor(Color.BLUE);
+
+            activiteDetector_ = tfMobileDetector_;
+        }
+        else {
+            tfMethod_ = TF_METHOD_TFLITE;
+
+            btnTFMethod_.setText("TF Lite");
+            btnTFMethod_.setBackgroundColor(Color.RED);
+
+            activiteDetector_ = tfLiteDetector_;
+        }
     }
 
     @Override
@@ -219,30 +196,29 @@ public class SmartLensActivity
         super.onPostCreate(savedInstanceState);
     }
 
-
     @Override
     public void onPreviewReadied(Size size, int cameraRotation) {
-        bitmap = Bitmap.createBitmap(size.getWidth(), size.getHeight(), Bitmap.Config.ARGB_8888);
-        croppedBitmap = Bitmap.createBitmap(TFMobileImageClassifier.INPUT_SIZE, TFMobileImageClassifier.INPUT_SIZE, Bitmap.Config.ARGB_8888);
+        bitmap_ = Bitmap.createBitmap(size.getWidth(), size.getHeight(), Bitmap.Config.ARGB_8888);
+        croppedBitmap_ = Bitmap.createBitmap(TFMobileDetector.INPUT_SIZE, TFMobileDetector.INPUT_SIZE, Bitmap.Config.ARGB_8888);
 
         final Display display = getWindowManager().getDefaultDisplay();
         final int screenOrientation = display.getRotation();
 
-        sensorOrientation = cameraRotation + screenOrientation;
+        sensorOrientation_ = cameraRotation + screenOrientation;
 
-        frameToCropTransform =
-                TFMobileImageHelper.getTransformationMatrix(
-                        size.getHeight(), size.getWidth(),
-                        TFMobileImageClassifier.INPUT_SIZE, TFMobileImageClassifier.INPUT_SIZE,
-                        sensorOrientation, true);
+        frameToCropTransform_ =
+            TFImageHelper.getTransformationMatrix(
+                size.getHeight(), size.getWidth(),
+                TFMobileDetector.INPUT_SIZE, TFMobileDetector.INPUT_SIZE,
+                sensorOrientation_, true);
 
-        cropToFrameTransform = new Matrix();
-        frameToCropTransform.invert(cropToFrameTransform);
+        cropToFrameTransform_ = new Matrix();
+        frameToCropTransform_.invert(cropToFrameTransform_);
     }
 
     @Override
     public void onImageAvailable(ImageReader reader) {
-        if (computing)
+        if (computing_)
             return;
 
         Image image = null;
@@ -251,31 +227,20 @@ public class SmartLensActivity
 
             image = reader.acquireLatestImage();
 
-            if (image == null) {
+            if (image == null)
                 return;
-            }
 
-            computing = true;
+            computing_ = true;
 
-            TFMobileImageHelper.imageToBitmap(image, bitmap);
+            TFImageHelper.imageToBitmap(image, bitmap_);
 
-            final Canvas canvas = new Canvas(croppedBitmap);
-            canvas.drawBitmap(bitmap, frameToCropTransform, null);
+            final Canvas canvas = new Canvas(croppedBitmap_);
+            canvas.drawBitmap(bitmap_, frameToCropTransform_, null);
 
             image.close();
 
-            if (tfMethod == TF_METHOD_TFMOBILE) {
-                //  TF Mobile
-                tfMobileResultList = tfMobileImageClassifier.recognizeImage(croppedBitmap);
-
-                //  Log.d(TAG, "recognizeImage using TF Mobile");
-            }
-            else {
-                //  TF Lite
-                tfMobileResultList = tfLiteImageClassifier.recognizeImage(croppedBitmap);
-
-                //  Log.d(TAG, "recognizeImage using TF Lite");
-            }
+            if (activiteDetector_ != null)
+                tfMobileResultList_ = activiteDetector_.recognizeImage(croppedBitmap_);
 
             runOnUiThread(updateResult);
         } catch (final Exception e) {
@@ -285,7 +250,7 @@ public class SmartLensActivity
                 image.close();
             }
 
-            computing = false;
+            computing_ = false;
         }
     }
 
