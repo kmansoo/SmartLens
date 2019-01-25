@@ -1,5 +1,5 @@
 # SmartLens
-The SmartLens can detect object from Camera using Tensorflow Lite and Tensorflow on Mobile. 
+The SmartLens can detect object from Camera using Tensorflow Lite or Tensorflow on Mobile. 
 The project had implemented by referring to three open sources in GitHub. 
 My intention in this project was to compare the performance between Tensorflow Lite and Tensorflow on Mobile on Android phones.
 
